@@ -1,0 +1,16 @@
+{
+    "name": "backend-blog",
+    "version": "1.0.0",
+    "description": "backend responsable de la gestion des blogs",
+    "main": "index.js",
+    "scripts": {
+        "start": "node insdex.js",
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/theblackmamba08/backend-blog.git"
+    },
+    "author": "theblackmamba08",
+    "license": "MIT"
+}
