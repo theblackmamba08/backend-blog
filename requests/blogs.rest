@@ -1,0 +1,15 @@
+### Get all notes
+GET http://localhost:3003/api/blogs
+
+
+### Create a new note
+POST http://localhost:3003/api/blogs
+Content-Type: application/json
+
+{
+  "title": "Grafikart",
+  "author": "theblackmamba08",
+  "url": "http://localhost:3001/api/notes",
+  "likes": 25
+}
+
