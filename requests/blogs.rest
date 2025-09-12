@@ -1,10 +1,11 @@
-### Get all notes
+### Get all blogs
 GET http://localhost:3003/api/blogs
 
 
-### Create a new note
+### Create a new blog
 POST http://localhost:3003/api/blogs
 Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6InJvb3QiLCJpZCI6IjY4YzI0NDMzNGM4OWRlMjM5ZjYzMmNlMCIsImlhdCI6MTc1NzU4MDk4OCwiZXhwIjoxNzU3NTgxMjg4fQ.NF4Z1DedxpouQWAd8M6vYlzkUfHFvHeD2BuB8VnMXTs
 
 {
   "title": "Grafikart",
@@ -13,3 +14,7 @@ Content-Type: application/json
   "likes": 25
 }
 
+### Delete a blog
+DELETE http://localhost:3003/api/blogs/68c28ed7d45f9a27bf826461
+Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6InRoZWJsYWNrbWFtYmEwOCIsImlkIjoiNjhjMjYxMzAwNGY1NGFjMWZmYTUwNzIzIiwiaWF0IjoxNzU3NTgxMjc2LCJleHAiOjE3NTc1ODE1NzZ9.P_yBylGzObM_MZAWiOi4oCJlYxwB0CSKrlx_Qm_vgLM

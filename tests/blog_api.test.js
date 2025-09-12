@@ -1,18 +1,60 @@
 const assert = require('node:assert')
-const { test, after, beforeEach, describe } = require('node:test')
+const { test, after, beforeEach, describe, before } = require('node:test')
 const mongoose = require('mongoose')
 const supertest = require('supertest')
 const app = require('../app')
 const helper = require('../utils/test_helper')
 const Blog = require('../models/blog')
+const User = require('../models/user')
+const bcrypt = require('bcrypt')
+const jwt = require('jsonwebtoken')
 
 const api = supertest(app)
 
-describe('when there is initially some blogs saved', () => {
+const getUserAndToken = async (pass) => {
+    const passwordHash = await bcrypt.hash(pass, 10)
+    const user = new User({
+        username: pass,
+        name: pass,
+        passwordHash,
+    })
+    await user.save()
+
+    const token = jwt.sign(
+        { username: user.username, id: user._id },
+        process.env.SECRET,
+        { expiresIn: 60 * 5 }
+    )
+
+    return {
+        user,
+        token,
+    }
+}
+
+before(async () => {
+    await mongoose.connect(process.env.TEST_MONGODB_URI)
+})
+
+describe('when there is initially some blogs saved by a user', () => {
     beforeEach(async () => {
         await Blog.deleteMany({})
+        await User.deleteMany({})
 
-        await Blog.insertMany(helper.initialBlogs)
+        const passwordHash = await bcrypt.hash('sekret', 10)
+        const user = new User({
+            username: 'testuser',
+            name: 'Test User',
+            passwordHash,
+        })
+        await user.save()
+
+        await Blog.insertMany(
+            helper.initialBlogs.map((blog) => ({
+                ...blog,
+                user: user._id.toString(),
+            }))
+        )
     })
 
     test('all blogs are returned as json', async () => {
@@ -42,15 +84,19 @@ describe('when there is initially some blogs saved', () => {
 
     describe('addition of a new blog', () => {
         test('a valid blog can be added', async () => {
+            const { user, token } = await getUserAndToken('theblackmamba08')
+
             const newBlog = {
                 title: 'Introduction express',
                 author: 'adoum',
                 url: 'https://fullstackopenclassrooms.com/nodejs',
                 likes: 12,
+                user: user._id,
             }
 
             await api
                 .post('/api/blogs')
+                .set('Authorization', `Bearer ${token}`)
                 .send(newBlog)
                 .expect(201)
                 .expect('Content-Type', /application\/json/)
@@ -66,14 +112,18 @@ describe('when there is initially some blogs saved', () => {
         })
 
         test('a blog without likes is set to zero', async () => {
+            const { user, token } = await getUserAndToken('theblackmamba08')
+
             const newBlog = {
                 title: 'Introduction Mongoose',
-                author: 'Fare..',
-                url: 'https://fullstackopenclass.com/nodejs',
+                author: 'adoum',
+                url: 'https://fullstackopenclassrooms.com/nodejs',
+                user: user._id,
             }
 
             const response = await api
                 .post('/api/blogs')
+                .set('Authorization', `Bearer ${token}`)
                 .send(newBlog)
                 .expect(201)
                 .expect('Content-Type', /application\/json/)
@@ -90,11 +140,19 @@ describe('when there is initially some blogs saved', () => {
         })
 
         test('blog without title or/and url is not added', async () => {
+            const { user, token } = await getUserAndToken('theblackmamba08')
+
             const newBlog = {
-                author: 'Fare..',
+                author: 'adoum',
+                user: user._id,
             }
 
-            await api.post('/api/blogs').send(newBlog).expect(400)
+            await api
+                .post('/api/blogs')
+                .set('Authorization', `Bearer ${token}`)
+                .send(newBlog)
+                .expect(400)
+                .expect('Content-Type', /application\/json/)
 
             const blogsAtEnd = await helper.blogsInDb()
             assert.strictEqual(blogsAtEnd.length, helper.initialBlogs.length)
@@ -144,10 +202,15 @@ describe('when there is initially some blogs saved', () => {
                 .expect(200)
                 .expect('Content-Type', /application\/json/)
 
-            assert.deepStrictEqual(resultBlog.body, blogToView)
+            assert.strictEqual(resultBlog.body.title, blogToView.title)
+            assert.strictEqual(resultBlog.body.author, blogToView.author)
+            assert.strictEqual(resultBlog.body.url, blogToView.url)
+            assert.strictEqual(resultBlog.body.likes, blogToView.likes)
+            assert.strictEqual(resultBlog.body.user, blogToView.user.toString())
+            assert.strictEqual(resultBlog.body.id, blogToView.id)
         })
 
-        test('fails with statuscode 404 if note does not exist', async () => {
+        test('fails with statuscode 404 if blog does not exist', async () => {
             const validNonexistingId = await helper.nonExistingId()
 
             await api.get(`/api/blogs/${validNonexistingId}`).expect(404)
@@ -161,26 +224,66 @@ describe('when there is initially some blogs saved', () => {
     })
 
     describe('deletion of a blog', () => {
-        test('succeeds with status code 204 if id is valid', async () => {
-            const blogsAtStart = await helper.blogsInDb()
-            const blogToDelete = blogsAtStart[0]
+        test('succeeds with status code 204 if deleted by creator', async () => {
+            const { user, token } = await getUserAndToken('theblackmamba08')
 
-            await api.delete(`/api/blogs/${blogToDelete.id}`).expect(204)
+            const newBlog = {
+                title: 'Blog to delete',
+                author: 'Author',
+                url: 'http://example.com',
+                likes: 5,
+                user: user._id,
+            }
+
+            const createdBlog = await api
+                .post('/api/blogs')
+                .set('Authorization', `Bearer ${token}`)
+                .send(newBlog)
+                .expect(201)
+                .expect('Content-Type', /application\/json/)
+
+            await api
+                .delete(`/api/blogs/${createdBlog.body.id}`)
+                .set('Authorization', `Bearer ${token}`)
+                .expect(204)
 
             const blogsAtEnd = await helper.blogsInDb()
-            const titles = blogsAtEnd.map((n) => n.title)
-
-            assert(!titles.includes(blogToDelete.title))
-            assert.strictEqual(
-                blogsAtEnd.length,
-                helper.initialBlogs.length - 1
-            )
+            assert(!blogsAtEnd.map((b) => b.title).includes('Blog to delete'))
+            assert.strictEqual(blogsAtEnd.length, helper.initialBlogs.length)
         })
 
-        test('fails with statuscode 404 if blog does not exist', async () => {
-            const validNonexistingId = await helper.nonExistingId()
+        test('fails with status code 403 if deleted by non-creator', async () => {
+            const { user: userA, token: tokenA } = await getUserAndToken(
+                'theblackmamba08'
+            )
+            const { token: tokenB } = await getUserAndToken('grafikart')
 
-            await api.delete(`/api/blogs/${validNonexistingId}`).expect(404)
+            const newBlog = {
+                title: 'Protected blog',
+                author: 'Author',
+                url: 'http://example.com',
+                likes: 3,
+                user: userA._id,
+            }
+
+            const createdBlog = await api
+                .post('/api/blogs')
+                .set('Authorization', `Bearer ${tokenA}`)
+                .send(newBlog)
+                .expect(201)
+                .expect('Content-Type', /application\/json/)
+
+            await api
+                .delete(`/api/blogs/${createdBlog.body.id}`)
+                .set('Authorization', `Bearer ${tokenB}`)
+                .expect(403)
+
+            const blogsAtEnd = await helper.blogsInDb()
+            assert(blogsAtEnd.map((b) => b.title).includes('Protected blog'))
+            assert.strictEqual(
+                blogsAtEnd.length,
+                helper.initialBlogs.length + 1
+            )
         })
     })
 })
